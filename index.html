@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Gpas Map</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
 
     <style>
         body {
@@ -13,64 +14,143 @@
             padding: 0;
         }
         #map {
-            width: 100%;
-            height: 100vh;
+            width: 50%;
+            height: 50vh;
+        }
+        .controls {
+            padding: 10px;
         }
     </style>
 </head>
 <body>
+    <div class="controls">
+        <input type="text" id="start" placeholder="Dirección de inicio">
+        <input type="text" id="end" placeholder="Dirección de llegada">
+        <button id="calculate">Calcular distancia</button>
+    </div>
+    <p id="result"></p> <!-- Párrafo para mostrar la distancia -->
     <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+    <script>
+        var map = L.map('map'); // No establecemos un setView inicial.
+
+        var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        });
+        osm.addTo(map);
+
+        if (!navigator.geolocation) {
+            console.log("Your browser doesn't support the geolocation feature");
+        } else {
+            // Obtener la primera posición y centrar el mapa
+            navigator.geolocation.getCurrentPosition((position) => {
+                var lat = position.coords.latitude;
+                var long = position.coords.longitude;
+                map.setView([lat, long], 15); // Usamos la primera posición para centrar el mapa
+            });
+
+            // Luego, cada 5 segundos obtenemos la nueva posición
+            setInterval(() => {
+                navigator.geolocation.getCurrentPosition(getPosition);
+            }, 5000);
+
+            var marker, circle;
+        }
+
+        function getPosition(position) {
+            var lat = position.coords.latitude;
+            var long = position.coords.longitude;
+            var accuracy = position.coords.accuracy;
+
+            if (marker) {
+                map.removeLayer(marker);
+            }
+            if (circle) {
+                map.removeLayer(circle);
+            }
+
+            marker = L.marker([lat, long]).addTo(map);
+            circle = L.circle([lat, long], { radius: accuracy }).addTo(map);
+
+            var featureGroup = L.featureGroup([marker, circle]).addTo(map);
+
+            // Ajustar el zoom para que incluya el marcador y el círculo
+            map.fitBounds(featureGroup.getBounds());
+
+            console.log("Your coordinate is: Lat:" + lat + " Long:" + long + " Accuracy: " + accuracy);
+        }
+
+        // Agregar evento para calcular distancia
+        document.getElementById('calculate').addEventListener('click', function() {
+            var startAddress = document.getElementById('start').value;
+            var endAddress = document.getElementById('end').value;
+
+            getCoordinates(startAddress, (startCoords) => {
+                getCoordinates(endAddress, (endCoords) => {
+                    if (startCoords && endCoords) {
+                        const distance = calculateDistance(startCoords.lat, startCoords.lng, endCoords.lat, endCoords.lng);
+                        // Mostrar la distancia en el párrafo
+                        document.getElementById('result').innerText = `Distancia entre ${startAddress} y ${endAddress}: ${distance.toFixed(2)} km`;
+
+                        // Agregar la ruta al mapa
+                        L.Routing.control({
+                            waypoints: [
+                                L.latLng(startCoords.lat, startCoords.lng),
+                                L.latLng(endCoords.lat, endCoords.lng)
+                            ],
+                            routeWhileDragging: true,
+                            geocoder: L.Control.Geocoder.nominatim(),
+                            lineOptions: {
+                                styles: [{color: 'blue', opacity: 0.7, weight: 5}]
+                            }
+                        }).addTo(map);
+                    }
+                });
+            });
+        });
+
+        // Función para obtener coordenadas de una dirección usando Nominatim
+        function getCoordinates(address, callback) {
+            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`;
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.length > 0) {
+                        const coords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+                        callback(coords);
+                    } else {
+                        console.log(`No se encontraron coordenadas para: ${address}`);
+                        callback(null);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching coordinates:", error);
+                    callback(null);
+                });
+        }
+
+        // Función para calcular la distancia entre dos puntos geográficos usando la fórmula de Haversine
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Radio de la Tierra en km
+            const dLat = deg2rad(lat2 - lat1);  // Diferencia de latitud en radianes
+            const dLon = deg2rad(lon2 - lon1);  // Diferencia de longitud en radianes
+            const a = 
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const distance = R * c; // Distancia en km
+            return distance;
+        }
+
+        // Convertir grados a radianes
+        function deg2rad(deg) {
+            return deg * (Math.PI / 180);
+        }
+
+    </script>
 </body>
 </html>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script>
-var map = L.map('map'); // No establecemos un setView inicial.
-
-var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-});
-osm.addTo(map);
-
-if (!navigator.geolocation) {
-    console.log("Your browser doesn't support the geolocation feature");
-} else {
-    // Obtener la primera posición y centrar el mapa
-    navigator.geolocation.getCurrentPosition((position) => {
-        var lat = position.coords.latitude;
-        var long = position.coords.longitude;
-        map.setView([lat, long], 15); // Usamos la primera posición para centrar el mapa
-    });
-
-    // Luego, cada 5 segundos obtenemos la nueva posición
-    setInterval(() => {
-        navigator.geolocation.getCurrentPosition(getPosition);
-    }, 5000);
-
-    var marker, circle;
-}
-
-function getPosition(position) {
-    var lat = position.coords.latitude;
-    var long = position.coords.longitude;
-    var accuracy = position.coords.accuracy;
-
-    if (marker) {
-        map.removeLayer(marker);
-    }
-    if (circle) {
-        map.removeLayer(circle);
-    }
-
-    marker = L.marker([lat, long]).addTo(map);
-    circle = L.circle([lat, long], { radius: accuracy }).addTo(map);
-
-    var featureGroup = L.featureGroup([marker, circle]).addTo(map);
-
-    // Ajustar el zoom para que incluya el marcador y el círculo
-    map.fitBounds(featureGroup.getBounds());
-
-    console.log("Your coordinate is: Lat:" + lat + " Long:" + long + " Accuracy: " + accuracy);
-}
-
-</script>
